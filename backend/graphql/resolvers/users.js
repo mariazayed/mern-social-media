@@ -35,9 +35,7 @@ module.exports = {
 				                       userName: res.userName
 			                       },
 			                       SECRET_KEY,
-			                       {
-				                       expiresIn: "1h"
-			                       });
+			                       {expiresIn: "1h"});
 
 			return {
 				...res._doc,
