@@ -2,60 +2,107 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const {UserInputError} = require("apollo-server");
 
+const {
+	validateRegisterInput,
+	validateLoginInput
+} = require("../../utils/validators");
 const {SECRET_KEY} = require("../../config");
 const User = require("../../models/User");
-const {validateRegisterInput} = require("../../utils/validators");
+
+function generateToken(user) {
+	return jwt.sign(
+		{
+			id: user.id,
+			email: user.email,
+			username: user.username
+		},
+		SECRET_KEY,
+		{expiresIn: "1h"}
+	);
+}
 
 module.exports = {
 	Mutation: {
-		async register(_, {
-			registerInput: {
-				userName,
-				email,
-				password,
-				confirmPassword
-			}
+		async login(_, {
+			username,
+			password
 		}) {
-			// User's data validation
 			const {
-				valid,
-				errors
-			} = validateRegisterInput(userName, email, password, confirmPassword);
+				errors,
+				valid
+			} = validateLoginInput(username, password);
 
 			if (!valid) {
 				throw new UserInputError("Errors", {errors});
 			}
 
-			// Check if the user already exists
-			const user = await User.findOne({userName});
+			const user = await User.findOne({username});
+
+			if (!user) {
+				errors.general = "User not found";
+				throw new UserInputError("User not found", {errors});
+			}
+
+			const match = await bcrypt.compare(password, user.password);
+			if (!match) {
+				errors.general = "Wrong crendetials";
+				throw new UserInputError("Wrong crendetials", {errors});
+			}
+
+			const token = generateToken(user);
+
+			return {
+				...user._doc,
+				id: user._id,
+				token
+			};
+		},
+		async register(
+			_,
+			{
+				registerInput: {
+					username,
+					email,
+					password,
+					confirmPassword
+				}
+			}
+		) {
+			// Validate user data
+			const {
+				valid,
+				errors
+			} = validateRegisterInput(
+				username,
+				email,
+				password,
+				confirmPassword
+			);
+			if (!valid) {
+				throw new UserInputError("Errors", {errors});
+			}
+			// TODO: Make sure user doesnt already exist
+			const user = await User.findOne({username});
 			if (user) {
-				throw new UserInputError("User Name is Taken", {
+				throw new UserInputError("Username is taken", {
 					errors: {
-						userName: "This User Name is Taken"
+						username: "This username is taken"
 					}
 				});
 			}
-
-			// Password hashing + token creation
+			// hash password and create an auth token
 			password = await bcrypt.hash(password, 12);
-			const newUser = new User(
-				{
-					email,
-					userName,
-					password,
-					confirmPassword,
-					createdAt: new Date().toISOString()
-				});
+
+			const newUser = new User({
+				                         email,
+				                         username,
+				                         password,
+				                         createdAt: new Date().toISOString()
+			                         });
 
 			const res = await newUser.save();
 
-			const token = jwt.sign({
-				                       id: res.id,
-				                       email: res.email,
-				                       userName: res.userName
-			                       },
-			                       SECRET_KEY,
-			                       {expiresIn: "1h"});
+			const token = generateToken(res);
 
 			return {
 				...res._doc,
