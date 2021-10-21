@@ -1,4 +1,4 @@
-# Social Media App With MERN Stack
+# Social Media App With MERN Stack ❤🔥
 
 ## Tech Stack:
 
